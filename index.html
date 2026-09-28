@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VIN Scanner | قارئ رقم الشاصي</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#687386;--primary:#2563eb;--primary2:#1d4ed8;--border:#e5e9f0;--ok:#059669;--danger:#dc2626;--shadow:0 10px 30px #17203312}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#eef4ff 0,#f7f8fb 280px);color:var(--text);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;padding:20px}
+.container{max-width:900px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:4px 0 20px}.brand{display:flex;align-items:center;gap:12px}.logo{width:48px;height:48px;border-radius:15px;background:linear-gradient(135deg,var(--primary),#60a5fa);display:grid;place-items:center;color:#fff;font-size:24px;box-shadow:0 8px 20px #2563eb35}.brand h1{font-size:21px;margin:0}.brand p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.section-title{font-size:16px;font-weight:800;margin:0 0 5px}.hint{font-size:13px;color:var(--muted);margin:0 0 16px}
+.camera{position:relative;background:#0b1220;border-radius:18px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}.camera video,.camera canvas{width:100%;height:100%;object-fit:cover}.camera video{display:none}.camera.active video{display:block}.camera.active .placeholder{display:none}.placeholder{text-align:center;color:#dbeafe;padding:25px}.placeholder .big{font-size:45px;display:block;margin-bottom:8px}.scanline{position:absolute;left:8%;right:8%;top:50%;height:2px;background:#60a5fa;box-shadow:0 0 12px #60a5fa;display:none}.camera.active .scanline{display:block}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.btn{border:0;border-radius:13px;padding:13px 15px;font-size:15px;font-weight:800;cursor:pointer;transition:.15s}.btn:active{transform:scale(.98)}.primary{background:var(--primary);color:#fff}.primary:hover{background:var(--primary2)}.secondary{background:#eff6ff;color:var(--primary);border:1px solid #bfdbfe}.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}.danger{color:var(--danger);background:#fff1f2;border:1px solid #fecdd3}.btn:disabled{opacity:.5;cursor:not-allowed}
+.status{min-height:22px;margin:13px 2px 0;font-size:13px;color:var(--muted)}.status.ok{color:var(--ok)}.status.err{color:var(--danger)}
+label{display:block;font-size:13px;font-weight:800;margin:14px 0 6px}input[type=text]{width:100%;padding:14px;border:1px solid var(--border);border-radius:12px;background:#f9fafb;color:var(--text);font-size:16px;direction:ltr;text-align:left;outline:none}input:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #2563eb15}
+.save{width:100%;margin-top:14px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px}.count{font-size:12px;color:var(--muted);background:#f1f5f9;border-radius:999px;padding:5px 9px}.record{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)}.record:last-child{border-bottom:0}.num{font-weight:900;direction:ltr;text-align:left;word-break:break-all}.date{font-size:12px;color:var(--muted);margin-top:4px}.record .info{flex:1;min-width:0}.empty{text-align:center;color:var(--muted);padding:25px 5px}
+@media(max-width:600px){body{padding:12px}.card{padding:15px;border-radius:17px}.top{margin-bottom:13px}.brand h1{font-size:18px}.camera{aspect-ratio:4/3}.actions{grid-template-columns:1fr}.toolbar{align-items:flex-start;flex-direction:column}.toolbar .btn{width:100%}}
+</style>
+</head>
+<body>
+<div class="container">
+<header class="top">
+ <div class="brand"><div class="logo">⌁</div><div><h1>VIN Scanner</h1><p>قارئ أرقام الشاصي وإدارة السجل</p></div></div>
+</header>
+
+<section class="card">
+ <h2 class="section-title">تصوير رقم الشاصي</h2>
+ <p class="hint">وجّه الكاميرا إلى رقم VIN بوضوح، ثم اضغط قراءة الرقم. يمكنك تعديل النتيجة قبل الحفظ.</p>
+ <div class="camera" id="cameraBox">
+  <video id="video" autoplay playsinline muted></video>
+  <div class="placeholder"><span class="big">📷</span>الكاميرا جاهزة للتشغيل</div>
+  <div class="scanline"></div>
+ </div>
+ <canvas id="canvas" hidden></canvas>
+ <div class="actions">
+  <button class="btn primary" id="cameraBtn">فتح الكاميرا</button>
+  <button class="btn secondary" id="scanBtn" disabled>قراءة رقم الشاصي</button>
+ </div>
+ <input id="fileInput" type="file" accept="image/*" capture="environment" hidden>
+ <button class="btn ghost" id="uploadBtn" style="width:100%;margin-top:10px">📁 اختيار صورة من الجهاز</button>
+ <div id="status" class="status">ملاحظة: دقة القراءة تعتمد على وضوح الصورة والإضاءة.</div>
+</section>
+
+<section class="card">
+ <h2 class="section-title">النتيجة</h2>
+ <p class="hint">راجع الرقم وعدّله إذا لزم قبل الضغط على حفظ.</p>
+ <label for="vin">رقم الشاصي VIN</label>
+ <input id="vin" type="text" maxlength="30" autocomplete="off" placeholder="مثال: WBAxxxxxxxxxxxxxx">
+ <label for="note">ملاحظة / نوع السيارة (اختياري)</label>
+ <input id="note" type="text" placeholder="مثال: Mercedes-Benz E-Class">
+ <button class="btn primary save" id="saveBtn">حفظ في السجل</button>
+</section>
+
+<section class="card">
+ <div class="toolbar"><div><h2 class="section-title">سجل أرقام الشاصي</h2><span class="count" id="count">0 سجل</span></div><button class="btn secondary" id="exportBtn">⬇ تصدير Excel</button></div>
+ <div id="list" style="margin-top:10px"></div>
+</section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const video=$('video'), cameraBox=$('cameraBox'), canvas=$('canvas'), status=$('status'), vin=$('vin');
+let stream=null, records=JSON.parse(localStorage.getItem('vin_records')||'[]'), imageBlob=null, worker=null;
+
+function setStatus(t,type=''){status.textContent=t;status.className='status '+type}
+function saveLocal(){localStorage.setItem('vin_records',JSON.stringify(records))}
+function normalizeVIN(text){
+ text=(text||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+ // Common OCR corrections for VIN characters. I/O/Q are not valid VIN characters.
+ text=text.replace(/O/g,'0').replace(/I/g,'1').replace(/Q/g,'9');
+ return text;
+}
+async function startCamera(){
+ try{
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  video.srcObject=stream; cameraBox.classList.add('active'); $('cameraBtn').textContent='إيقاف الكاميرا'; $('scanBtn').disabled=false; setStatus('الكاميرا تعمل — ثبّت الصورة ثم اضغط قراءة رقم الشاصي.','ok');
+ }catch(e){setStatus('تعذر تشغيل الكاميرا. اسمح للموقع باستخدام الكاميرا وتأكد أن الرابط يعمل عبر HTTPS.','err')}
+}
+function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}cameraBox.classList.remove('active');$('cameraBtn').textContent='فتح الكاميرا';$('scanBtn').disabled=true}
+$('cameraBtn').onclick=()=>stream?stopCamera():startCamera();
+
+async function getWorker(){
+ if(worker) return worker;
+ setStatus('جارٍ تجهيز محرك قراءة النص لأول مرة... قد يستغرق ذلك قليلًا.');
+ worker=await Tesseract.createWorker('eng');
+ await worker.setParameters({tessedit_char_whitelist:'ABCDEFGHJKLMNPRSTUVWXYZ0123456789',preserve_interword_spaces:'1',user_defined_dpi:'300'});
+ return worker;
+}
+async function scanBlob(blob){
+ imageBlob=blob;
+ const img=new Image(); img.src=URL.createObjectURL(blob); await img.decode();
+ const max=1800, scale=Math.min(1,max/img.width), w=Math.round(img.width*scale),h=Math.round(img.height*scale);
+ canvas.width=w;canvas.height=h;const c=canvas.getContext('2d');c.filter='contrast(1.25) brightness(1.05)';c.drawImage(img,0,0,w,h);
+ try{
+  const wkr=await getWorker(); setStatus('جارٍ قراءة رقم الشاصي...');
+  const res=await wkr.recognize(canvas);
+  const value=normalizeVIN(res.data.text);
+  vin.value=value;
+  setStatus(value?'تمت القراءة. راجع الرقم وعدّله يدويًا إذا لزم.':'لم أتمكن من قراءة رقم واضح. قرّب الكاميرا وحسّن الإضاءة ثم أعد المحاولة.','ok');
+ }catch(e){setStatus('حدث خطأ أثناء القراءة. يمكنك إدخال الرقم يدويًا.','err')}
+}
+$('scanBtn').onclick=()=>{
+ if(!video.videoWidth)return;
+ canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+ canvas.getContext('2d').drawImage(video,0,0);
+ canvas.toBlob(blob=>scanBlob(blob),'image/jpeg',.95);
+};
+$('uploadBtn').onclick=()=>$('fileInput').click();
+$('fileInput').onchange=async e=>{const f=e.target.files[0];if(f)await scanBlob(f)}
+
+$('saveBtn').onclick=()=>{
+ const number=vin.value.trim().toUpperCase();
+ if(!number){setStatus('أدخل رقم الشاصي أولًا.','err');vin.focus();return}
+ const rec={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString(),number,note:$('note').value.trim(),ts:Date.now()};
+ records.unshift(rec);saveLocal();render();vin.value='';$('note').value='';setStatus('تم حفظ رقم الشاصي بنجاح.','ok');
+};
+function render(){
+ $('count').textContent=records.length+' سجل';
+ if(!records.length){$('list').innerHTML='<div class="empty">لا توجد سجلات بعد.</div>';return}
+ $('list').innerHTML=records.map(r=>`<div class="record"><div class="info"><div class="num">${esc(r.number)}</div><div class="date">${new Date(r.ts).toLocaleString('ar-JO')}${r.note?' · '+esc(r.note):''}</div></div><button class="btn danger" onclick="delRec('${r.id}')">حذف</button></div>`).join('');
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+window.delRec=id=>{records=records.filter(r=>r.id!==id);saveLocal();render()}
+$('exportBtn').onclick=()=>{
+ if(!records.length){setStatus('لا توجد بيانات للتصدير.','err');return}
+ const data=records.map(r=>({'رقم الشاصي':r.number,'ملاحظة':r.note||'','التاريخ':new Date(r.ts).toLocaleString('ar-JO')}));
+ const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'VIN Records');
+ XLSX.writeFile(wb,'VIN_Records.xlsx');setStatus('تم تجهيز ملف Excel.','ok');
+};
+render();
+window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());if(worker)worker.terminate()});
+</script>
+</body>
+</html>
